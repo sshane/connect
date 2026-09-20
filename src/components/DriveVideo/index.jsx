@@ -43,7 +43,7 @@ class DriveVideo extends Component {
     this.onHlsError = this.onHlsError.bind(this);
     this.onVideoError = this.onVideoError.bind(this);
     this.onVideoResume = this.onVideoResume.bind(this);
-    this.syncVideo = this.syncVideo.bind(this);
+    this.onVideoProgress = this.onVideoProgress.bind(this);
     this.onVideoSeeked = this.onVideoSeeked.bind(this);
     this.onVideoEnded = this.onVideoEnded.bind(this);
     this.ready = false;
@@ -52,26 +52,26 @@ class DriveVideo extends Component {
     this.videoPlayer = React.createRef();
 
     this.state = {
-      src: null,
       videoError: null,
     };
   }
 
-  componentDidMount() {
-    this.updateVideoSource({});
-    this.videoSyncIntv = setInterval(this.syncVideo, 100);
-  }
-
   componentDidUpdate(prevProps) {
-    this.updateVideoSource(prevProps);
+    if (this.props.currentRoute?.fullname !== prevProps.currentRoute?.fullname) {
+      this.ready = false;
+      this.pendingSeek = false;
+      this.props.dispatch(videoTime(null));
+      this.setState({ videoError: null });
+    }
     if (this.props.seekRevision !== prevProps.seekRevision) {
       this.seekToTimeline();
     }
-    this.syncVideo();
+    if (this.props.loop !== prevProps.loop) {
+      this.onVideoProgress();
+    }
   }
 
   componentWillUnmount() {
-    clearInterval(this.videoSyncIntv);
     this.props.dispatch(videoTime(null));
   }
 
@@ -85,33 +85,29 @@ class DriveVideo extends Component {
 
   onVideoSeeked() {
     this.pendingSeek = false;
-    if (this.resumeAfterEnd) {
-      this.resumeAfterEnd = false;
+    this.onVideoResume();
+    this.onVideoProgress();
+  }
+
+  onVideoEnded() {
+    if (this.props.loop?.duration > 0) {
+      this.seekToTimeline(this.props.loop.startTime);
       if (this.props.desiredPlaySpeed) {
         this.videoPlayer.current.getInternalPlayer().play()?.catch(() => {
           this.props.dispatch(pause());
         });
       }
-    }
-    this.onVideoResume();
-    this.syncVideo();
-  }
-
-  onVideoEnded() {
-    if (this.props.loop?.duration > 0) {
-      this.resumeAfterEnd = true;
-      this.syncVideo();
     } else {
       this.props.dispatch(pause());
     }
   }
 
-  seekToTimeline() {
+  seekToTimeline(offset = currentOffset()) {
     if (!this.ready) {
       return;
     }
     const player = this.videoPlayer.current;
-    const target = this.currentVideoTime();
+    const target = this.currentVideoTime(offset);
     if (Math.abs(player.getCurrentTime() - target) > 0.001) {
       this.pendingSeek = true;
       player.seekTo(target, 'seconds');
@@ -190,28 +186,7 @@ class DriveVideo extends Component {
     }
   }
 
-  updateVideoSource(prevProps) {
-    let { src } = this.state;
-    const { currentRoute } = this.props;
-    if (!currentRoute) {
-      if (src !== '') {
-        this.ready = false;
-        this.setState({ src: '', videoError: null });
-      }
-      return;
-    }
-
-    if (src === '' || !prevProps.currentRoute || prevProps.currentRoute?.fullname !== currentRoute.fullname) {
-      this.ready = false;
-      this.pendingSeek = false;
-      this.resumeAfterEnd = false;
-      this.props.dispatch(videoTime(null));
-      src = api.video.getQcameraStreamUrl(currentRoute.fullname, currentRoute.share_exp, currentRoute.share_sig);
-      this.setState({ src, videoError: null });
-    }
-  }
-
-  syncVideo() {
+  onVideoProgress() {
     const { currentRoute, loop, dispatch } = this.props;
     const player = this.videoPlayer.current;
     const media = player?.getInternalPlayer();
@@ -221,13 +196,9 @@ class DriveVideo extends Component {
 
     const offset = player.getCurrentTime() * 1000 + (currentRoute.videoStartOffset || 0);
     if (loop?.startTime != null && loop.duration > 0
-        && (offset < loop.startTime - 1 || offset >= loop.startTime + loop.duration || media.ended)) {
-      const target = this.currentVideoTime(loop.startTime);
-      if (Math.abs(player.getCurrentTime() - target) > 0.001) {
-        this.pendingSeek = true;
-        player.seekTo(target, 'seconds');
-        return;
-      }
+        && (offset < loop.startTime - 1 || offset >= loop.startTime + loop.duration)) {
+      this.seekToTimeline(loop.startTime);
+      return;
     }
 
     // The media clock already accounts for buffering, playback speed, and the
@@ -238,23 +209,13 @@ class DriveVideo extends Component {
   }
 
   currentVideoTime(offset = currentOffset()) {
-    const { currentRoute } = this.props;
-    if (!currentRoute) {
-      return 0;
-    }
-
-    if (currentRoute.videoStartOffset) {
-      offset -= currentRoute.videoStartOffset;
-    }
-
-    offset /= 1000;
-
-    return Math.max(0, offset);
+    return Math.max(0, (offset - (this.props.currentRoute?.videoStartOffset || 0)) / 1000);
   }
 
   render() {
     const { desiredPlaySpeed, isBufferingVideo, currentRoute, onAudioStatusChange, isMuted } = this.props;
-    const { src, videoError } = this.state;
+    const { videoError } = this.state;
+    const src = currentRoute && api.video.getQcameraStreamUrl(currentRoute.fullname, currentRoute.share_exp, currentRoute.share_sig);
 
     const onPlayerReady = (player) => {
       if (!this.ready) {
@@ -277,6 +238,7 @@ class DriveVideo extends Component {
       <div className="min-h-[200px] relative max-w-[964px] m-[0_auto] aspect-[1.593]">
         <VideoOverlay loading={isBufferingVideo} error={videoError} />
         <ReactPlayer
+          key={currentRoute?.fullname}
           ref={this.videoPlayer}
           url={src}
           playsinline
@@ -285,6 +247,8 @@ class DriveVideo extends Component {
           height="100%"
           playing={Boolean(currentRoute && desiredPlaySpeed)}
           onReady={onPlayerReady}
+          onProgress={this.onVideoProgress}
+          progressInterval={100}
           config={{
             hlsVersion: '1.4.8',
             hlsOptions: {
@@ -305,15 +269,11 @@ class DriveVideo extends Component {
 }
 
 const stateToProps = (state) => ({
-  dongleId: state.dongleId,
   desiredPlaySpeed: state.desiredPlaySpeed,
-  offset: state.offset,
   videoTime: state.videoTime,
   seekRevision: state.seekRevision,
   loop: state.loop,
-  startTime: state.startTime,
   isBufferingVideo: state.isBufferingVideo,
-  routes: state.routes,
   currentRoute: state.currentRoute,
 });
 
