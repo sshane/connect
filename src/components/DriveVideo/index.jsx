@@ -60,6 +60,7 @@ class DriveVideo extends Component {
     if (this.props.currentRoute?.fullname !== prevProps.currentRoute?.fullname) {
       this.ready = false;
       this.pendingSeek = false;
+      this.props.onAudioStatusChange?.(false);
       this.props.dispatch(videoTime(null));
       this.setState({ videoError: null });
     }
@@ -241,9 +242,10 @@ class DriveVideo extends Component {
         hlsPlayer.on('hlsBufferCodecs', (event, data) => {
           onAudioStatusChange?.(!!data.audio);
         });
-      } else if (videoElement?.audioTracks) {
-        // Native HLS includes macOS Safari and iPadOS desktop user agents.
-        onAudioStatusChange?.(videoElement.audioTracks.length > 0);
+      } else if (videoElement?.audioTracks?.length > 0) {
+        // Keep detected audio available until the route changes, even if a later
+        // native HLS readiness event exposes an empty track list.
+        onAudioStatusChange?.(true);
       }
     };
 

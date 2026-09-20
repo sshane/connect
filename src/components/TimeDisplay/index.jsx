@@ -273,12 +273,12 @@ class TimeDisplay extends Component {
           </IconButton>
         </div>
         <div className={ classes.leftBorderBox }>
-          <Tooltip title={ !this.props.hasAudio ? "Enable audio recording through the \"Record and Upload Microphone Audio\" toggle on your device" : '' }>
+          <Tooltip title={ !hasAudio && isMuted ? "Enable audio recording through the \"Record and Upload Microphone Audio\" toggle on your device" : '' }>
             <div>
               <IconButton
                 className={ classes.iconButton }
                 onClick={onMuteToggle}
-                disabled={!hasAudio}
+                disabled={!hasAudio && isMuted}
                 aria-label={isMuted ? 'Unmute' : 'Mute'}
               >
                 {isMuted
