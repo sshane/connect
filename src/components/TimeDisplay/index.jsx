@@ -13,15 +13,10 @@ import { seek, play, pause } from '../../timeline/playback';
 import { getSegmentNumber } from '../../utils';
 import { isIos } from '../../utils/browser.js';
 
-const timerSteps = [
-  0.1,
-  0.25,
-  0.5,
-  1,
-  2,
-  // Native HLS stalls above 2x on iOS, including iPadOS desktop user agents.
-  ...(isIos() || (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1) ? [] : [4, 8]),
-];
+// Native HLS stalls above 2x and switches very slowly below 0.5x on iOS.
+const timerSteps = isIos() || (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
+  ? [0.5, 1, 2]
+  : [0.1, 0.25, 0.5, 1, 2, 4, 8];
 
 const styles = (theme) => ({
   base: {
