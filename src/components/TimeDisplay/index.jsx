@@ -11,6 +11,7 @@ import { DownArrow, Forward10, Pause, PlayArrow, Replay10, UpArrow, VolumeUp, Vo
 import { currentOffset } from '../../timeline';
 import { seek, play, pause } from '../../timeline/playback';
 import { getSegmentNumber } from '../../utils';
+import { isIos } from '../../utils/browser.js';
 
 const timerSteps = [
   0.1,
@@ -18,8 +19,8 @@ const timerSteps = [
   0.5,
   1,
   2,
-  4,
-  8,
+  // Native HLS stalls above 2x on iOS, including iPadOS desktop user agents.
+  ...(isIos() || (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1) ? [] : [4, 8]),
 ];
 
 const styles = (theme) => ({

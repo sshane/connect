@@ -148,6 +148,14 @@ class DriveVideo extends Component {
       return;
     }
 
+    if (e.name === 'NotAllowedError') {
+      // Autoplay denial needs a user gesture, not a buffering/error overlay.
+      this.setState({ videoError: null });
+      this.props.dispatch(pause());
+      this.props.dispatch(bufferVideo(false));
+      return;
+    }
+
     if (e.name === 'AbortError') {
       // ignore
       return;
@@ -204,6 +212,11 @@ class DriveVideo extends Component {
     // The media clock already accounts for buffering, playback speed, and the
     // audio output device. The timeline follows it, never the other way around.
     if (this.props.videoTime !== offset) {
+      // Native HLS can report waiting on a rate change without a matching
+      // playing event. Advancing, ready media is no longer buffering.
+      if (this.props.videoTime != null && this.props.isBufferingVideo && !media.paused && media.readyState >= 2) {
+        dispatch(bufferVideo(false));
+      }
       dispatch(videoTime(offset));
     }
   }
