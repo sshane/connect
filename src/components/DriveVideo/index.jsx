@@ -35,7 +35,7 @@ const VideoOverlay = ({ loading, error }) => {
   );
 };
 
-export class DriveVideo extends Component {
+class DriveVideo extends Component {
   constructor(props) {
     super(props);
 
